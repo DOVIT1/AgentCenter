@@ -35,7 +35,19 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 
 const app = express();
-app.use(express.static(__dirname)); // Serve frontend files
+
+// Configure EJS
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "views"));
+
+// Serve static files from 'public' directory
+app.use(express.static(path.join(__dirname, "public")));
+
+// Render Main View
+app.get("/", (req, res) => {
+  res.render("index");
+});
+
 const httpServer = createServer(app);
 // Configuración de Socket.io para comunicación en tiempo real (ej. actualizar dashboard de admin cuando un agente hace una venta).
 const io = new Server(httpServer, {
