@@ -548,21 +548,39 @@ app.post("/admin/assign", authAdmin, async (req, res) => {
 app.get("/admin/filters/options", authAdmin, async (req, res) => {
   try {
     const products = await db.collection("leads").distinct("Product");
-    const companies = await db.collection("leads").distinct("Prev. Company");
+
+    // Use aggregation to safely access "Prev. Company" which contains a dot
+    const companiesRaw = await db.collection("leads").aggregate([
+      {
+        $group: {
+          _id: { $getField: { field: "Prev. Company", input: "$$ROOT" } }
+        }
+      }
+    ]).toArray();
+    const companies = companiesRaw.map(c => c._id).filter(c => c !== null);
+
     const customIds = await db.collection("leads").distinct("customId");
     const listNames = await db.collection("leads").distinct("listName");
+    const dispositions = await db.collection("leads").distinct("DISPOSITION");
+
+    console.log("DEBUG /admin/filters/options:");
+    console.log(" - Products found:", products.length);
+    console.log(" - Companies found:", companies.length, companies);
+    console.log(" - Dispositions found:", dispositions.length, dispositions);
 
     // Filter out null/empty values and sort
     const cleanProducts = products.filter(p => p).sort();
     const cleanCompanies = companies.filter(c => c).sort();
     const cleanCustomIds = customIds.filter(c => c).sort();
     const cleanListNames = listNames.filter(l => l).sort();
+    const cleanDispositions = dispositions.filter(d => d).sort();
 
     res.json({
       products: cleanProducts,
       companies: cleanCompanies,
       customIds: cleanCustomIds,
-      listNames: cleanListNames
+      listNames: cleanListNames,
+      dispositions: cleanDispositions
     });
   } catch (err) {
     console.error("Error fetching filter options:", err);
@@ -594,7 +612,12 @@ app.get("/admin/leads", authAdmin, async (req, res) => {
   }
   if (product) query.Product = product;
   if (listName) query.listName = listName;
-  if (prevCompany) query['Prev. Company'] = prevCompany;
+  // Use $expr to safely query "Prev. Company"
+  if (prevCompany) {
+    query.$expr = {
+      $eq: [{ $getField: { field: "Prev. Company", input: "$$ROOT" } }, prevCompany]
+    };
+  }
   if (customId) query.customId = customId;
 
   // Date Range Filter
@@ -758,7 +781,7 @@ app.post("/admin/leads/deduplicate/preview", authAdmin, async (req, res) => {
           count: { $gt: 1 }
         }
       }
-    ]).toArray();
+    ], { allowDiskUse: true }).toArray();
 
     if (duplicates.length === 0) {
       return res.json({ count: 0, duplicates: [] });
@@ -832,7 +855,7 @@ app.post("/admin/leads/deduplicate", authAdmin, async (req, res) => {
           count: { $gt: 1 }
         }
       }
-    ]).toArray();
+    ], { allowDiskUse: true }).toArray();
 
     if (duplicates.length === 0) {
       return res.json({ success: true, message: "No duplicate leads found.", count: 0 });

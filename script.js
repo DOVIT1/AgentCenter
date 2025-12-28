@@ -144,6 +144,67 @@ function phoneTelHref(raw) {
 // ==========================================
 // FUNCIONES DE ADMINISTRADOR
 // ==========================================
+
+// -- Admin Views Navigation --
+function showAdminView(viewId) {
+  // Hide all views
+  document.querySelectorAll('.admin-view').forEach(el => el.style.display = 'none');
+  // Deactivate all nav items
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+  // Show selected view
+  const viewEl = document.getElementById(`admin-view-${viewId}`);
+  if (viewEl) viewEl.style.display = 'block';
+
+  // Activate nav item
+  const navEl = document.getElementById(`nav-${viewId}`);
+  if (navEl) navEl.classList.add('active');
+
+  // Trigger data load if needed
+  if (viewId === 'dashboard') {
+    loadAnalyticsDashboard();
+    loadUsersSummary(); // Leaderboard
+    loadFilterOptions(); // Also valid here
+  } else if (viewId === 'leads') {
+    loadFilterOptions(); // Ensure filters are populated when opening this view
+    loadAllLeads();
+  } else if (viewId === 'users') {
+    loadUsersSummary();
+  } else if (viewId === 'ringcentral') {
+    const range = document.getElementById('rcTimeRange').value;
+    loadRingCentralMetrics(range);
+  }
+}
+
+function initializeAdminNavigation() {
+  // Check if we need to restore a view or default to dashboard
+  showAdminView('dashboard');
+}
+
+// Loader Helpers
+function showLoader(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  // Check if already exists
+  if (container.querySelector('.loader-overlay')) return;
+
+  const loader = document.createElement('div');
+  loader.className = 'loader-overlay';
+  loader.innerHTML = '<div class="spinner"></div>';
+  // Ensure container is relative so absolute positioning works
+  if (getComputedStyle(container).position === 'static') {
+    container.style.position = 'relative';
+  }
+  container.appendChild(loader);
+}
+
+function hideLoader(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const loader = container.querySelector('.loader-overlay');
+  if (loader) loader.remove();
+}
+
 // Inicialización del dashboard, gestión de usuarios y visualización de métricas.
 
 async function initializeAdminHub() {
@@ -152,7 +213,8 @@ async function initializeAdminHub() {
       showToast('Refreshing dashboard...', 'info');
       await Promise.all([
         loadUsersSummary(),
-        loadAnalyticsDashboard()
+        loadAnalyticsDashboard(),
+        loadFilterOptions()
       ]);
       showToast('Dashboard updated', 'success');
     } catch (err) {
@@ -232,9 +294,16 @@ async function initializeAdminHub() {
     }
   }
 
-  loadAnalyticsDashboard();
+  // Initial Data Load
+  await Promise.all([
+    loadUsersSummary(),
+    loadAnalyticsDashboard(),
+    loadFilterOptions()
+  ]);
+
   // loadRingCentralMetrics(); // Removed auto-load
-  initializeLeadManagement(agentUsers);
+  initializeLeadManagement();
+  initializeAdminNavigation();
 }
 
 function openAgentProfile(userId, username) {
@@ -338,15 +407,17 @@ async function getAgentStats() {
 }
 
 // Inicializa la gestión de leads: filtros, tabla de datos y acciones masivas.
-function initializeLeadManagement(agentUsers) {
+function initializeLeadManagement() {
   const agentFilterSelect = document.getElementById('lead-filter-agent');
   const reassignAgentSelect = document.getElementById('reassign-lead-agent');
 
-  const agentOptions = agentUsers.map(user => `<option value="${user.id}">${user.username}</option>`).join('');
-  agentFilterSelect.innerHTML += agentOptions;
-  reassignAgentSelect.innerHTML = `<option value="unassigned">Unassign (Back to Pool)</option>` + agentOptions;
+  // Agent population moved to loadFilterOptions()
 
-  document.getElementById('filter-leads-btn').addEventListener('click', loadAllLeads);
+  // Use onclick to ensures single active listener and avoid duplication
+  const filterBtn = document.getElementById('filter-leads-btn');
+  if (filterBtn) {
+    filterBtn.onclick = loadAllLeads;
+  }
   document.getElementById('reassign-selected-leads-btn').addEventListener('click', reassignSelectedLeads);
 
   // Enhanced Delete Button Logic
@@ -371,130 +442,219 @@ function initializeLeadManagement(agentUsers) {
 
   // Obtiene las disposiciones únicas de los leads y construye el dropdown personalizado con checkboxes.
   // Permite filtrar por múltiples disposiciones a la vez.
-  fetch(`${CONFIG.API_BASE_URL}/admin/leads`, { headers: { 'Authorization': `Bearer ${userToken}` } })
-    .then(res => res.json())
-    .then(leads => {
-      const dispositions = [...new Set(['Sale', ...leads.map(lead => lead.DISPOSITION).filter(d => d)])].sort();
-      const dropdownContent = document.getElementById('disposition-dropdown-content');
-      const dropdownBtn = document.getElementById('disposition-dropdown-btn');
-      const dropdownBtnText = dropdownBtn.querySelector('span');
+  // Setup Custom Dropdown UI (Listeners)
+  const dropdownContent = document.getElementById('disposition-dropdown-content');
+  const dropdownBtn = document.getElementById('disposition-dropdown-btn');
+  const dropdownBtnText = dropdownBtn.querySelector('span');
 
-      // Toggle dropdown
-      dropdownBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        document.getElementById('disposition-dropdown-content').classList.toggle('show');
-      });
+  // Toggle dropdown
+  dropdownBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('disposition-dropdown-content').classList.toggle('show');
+  });
 
-      // Close dropdown when clicking outside
-      document.addEventListener('click', (e) => {
-        if (!e.target.closest('.custom-dropdown')) {
-          document.getElementById('disposition-dropdown-content').classList.remove('show');
-        }
-      });
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-dropdown')) {
+      document.getElementById('disposition-dropdown-content').classList.remove('show');
+    }
+  });
 
-      dropdownContent.innerHTML = dispositions.map(d => `
-        <div class="dropdown-item">
-          <input type="checkbox" id="dispo-${d}" value="${d}" class="disposition-checkbox">
-          <label for="dispo-${d}">${d}</label>
-        </div>
-      `).join('');
-
-      // Update button text on change
-      dropdownContent.addEventListener('change', () => {
-        const selected = Array.from(document.querySelectorAll('.disposition-checkbox:checked')).map(cb => cb.value);
-        if (selected.length === 0) {
-          dropdownBtnText.textContent = 'All Dispositions';
-        } else if (selected.length === 1) {
-          dropdownBtnText.textContent = selected[0];
-        } else {
-          dropdownBtnText.textContent = `${selected.length} Selected`;
-        }
-      });
-    });
-
-  // Fetch and populate Product and Prev. Company dropdowns
-  fetch(`${CONFIG.API_BASE_URL}/admin/filters/options`, { headers: { 'Authorization': `Bearer ${userToken}` } })
-    .then(res => res.json())
-    .then(data => {
-      const productSelect = document.getElementById('lead-filter-product');
-      const companySelect = document.getElementById('lead-filter-prev-company');
-
-      if (data.products && data.products.length) {
-        data.products.forEach(p => {
-          const opt = document.createElement('option');
-          opt.value = p;
-          opt.textContent = p;
-          productSelect.appendChild(opt);
-        });
-      }
-
-      if (data.companies && data.companies.length) {
-        data.companies.forEach(c => {
-          const opt = document.createElement('option');
-          opt.value = c;
-          opt.textContent = c;
-          companySelect.appendChild(opt);
-        });
-      }
-
-      if (data.customIds && data.customIds.length) {
-        const customIdSelect = document.getElementById('lead-filter-custom-id');
-        data.customIds.forEach(id => {
-          const opt = document.createElement('option');
-          opt.value = id;
-          opt.textContent = id;
-          customIdSelect.appendChild(opt);
-        });
-      }
-
-      // Populate Upload List Name Dropdown
-      const uploadListSelect = document.getElementById('upload-list-name');
-      const uploadExistingOptions = Array.from(uploadListSelect.options).map(o => o.value);
-
-      // Populate Filter List Dropdown
-      const filterListSelect = document.getElementById('lead-filter-list');
-      const filterExistingOptions = Array.from(filterListSelect.options).map(o => o.value);
-
-      if (data.listNames && data.listNames.length) {
-        data.listNames.forEach(name => {
-          // Add to Upload Dropdown
-          if (!uploadExistingOptions.includes(name)) {
-            const opt = document.createElement('option');
-            opt.value = name;
-            opt.textContent = name;
-            uploadListSelect.appendChild(opt);
-          }
-          // Add to Filter Dropdown
-          if (!filterExistingOptions.includes(name)) {
-            const opt = document.createElement('option');
-            opt.value = name;
-            opt.textContent = name;
-            filterListSelect.appendChild(opt);
-          }
-        });
-      }
-    })
-    .catch(err => console.error('Error fetching filter options:', err));
+  // Update button text on change
+  dropdownContent.addEventListener('change', () => {
+    const selected = Array.from(document.querySelectorAll('.disposition-checkbox:checked')).map(cb => cb.value);
+    if (selected.length === 0) {
+      dropdownBtnText.textContent = 'All Dispositions';
+    } else if (selected.length === 1) {
+      dropdownBtnText.textContent = selected[0];
+    } else {
+      dropdownBtnText.textContent = `${selected.length} Selected`;
+    }
+  });
 
   // Handler for Add Custom List Button
   document.getElementById('add-custom-list-btn').addEventListener('click', () => {
     const newListName = prompt("Enter the name for the new list:");
     if (newListName && newListName.trim() !== "") {
-      const select = document.getElementById('upload-list-name');
-      const opt = document.createElement('option');
-      opt.value = newListName.trim();
-      opt.textContent = newListName.trim();
-      opt.selected = true;
-      select.appendChild(opt);
-      showToast(`Custom list '${newListName}' added.`, 'success');
+      const uploadSelect = document.getElementById('upload-list-name');
+      const filterSelect = document.getElementById('lead-filter-list');
+      const name = newListName.trim();
+
+      // Add to Upload Dropdown
+      const optUpload = document.createElement('option');
+      optUpload.value = name;
+      optUpload.textContent = name;
+      optUpload.selected = true;
+      uploadSelect.appendChild(optUpload);
+
+      // Add to Filter Dropdown if not exists
+      if (!Array.from(filterSelect.options).some(o => o.value === name)) {
+        const optFilter = document.createElement('option');
+        optFilter.value = name;
+        optFilter.textContent = name;
+        filterSelect.appendChild(optFilter);
+      }
+
+      showToast(`Custom list '${name}' added.`, 'success');
     }
   });
+}
+
+async function loadFilterOptions() {
+  try {
+    // 1. Fetch Filter Options (Products, Companies, etc.)
+    const respOptions = await fetch(`${CONFIG.API_BASE_URL}/admin/filters/options`, { headers: { 'Authorization': `Bearer ${userToken}` } });
+    const data = await respOptions.json();
+
+    // 2. Fetch Users for Agent Filter
+    const users = await getUsersSummary();
+    const agentUsers = users.filter(u => u.role === 'agent');
+
+    // --- DOM Elements ---
+    const productSelect = document.getElementById('lead-filter-product');
+    const companySelect = document.getElementById('lead-filter-prev-company');
+    const customIdSelect = document.getElementById('lead-filter-custom-id');
+    const uploadListSelect = document.getElementById('upload-list-name');
+    const filterListSelect = document.getElementById('lead-filter-list');
+
+    // Agent Selects
+    const agentFilterSelect = document.getElementById('lead-filter-agent');
+    const reassignAgentSelect = document.getElementById('reassign-lead-agent');
+
+    // Helper to clear options except first (e.g., "All Products")
+    const clearOptions = (select) => {
+      while (select.options.length > 1) {
+        select.remove(1);
+      }
+    };
+
+    clearOptions(productSelect);
+    clearOptions(companySelect);
+    clearOptions(customIdSelect);
+    clearOptions(filterListSelect);
+    clearOptions(agentFilterSelect);
+    // Add Unassigned option to Agent Filter
+    agentFilterSelect.insertAdjacentHTML('beforeend', '<option value="unassigned">Unassigned</option>');
+
+    // reassignAgentSelect usually has "Unassign" as first custom option, we can rebuild it fully to be safe
+    reassignAgentSelect.innerHTML = `<option value="unassigned">Unassign (Back to Pool)</option>`;
+
+    // --- Populate Agents ---
+    if (agentUsers && agentUsers.length) {
+      const agentOpts = agentUsers.map(user => `<option value="${user.id}">${user.username}</option>`).join('');
+      // Use insertAdjacentHTML for performance or simple innerHTML append
+      agentFilterSelect.insertAdjacentHTML('beforeend', agentOpts);
+      reassignAgentSelect.insertAdjacentHTML('beforeend', agentOpts);
+    }
+
+    // --- Populate Options from Backend ---
+
+    // Populate Products
+    if (data.products && data.products.length) {
+      data.products.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        productSelect.appendChild(opt);
+      });
+    }
+
+    // Populate Companies
+    if (data.companies && data.companies.length) {
+      data.companies.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        companySelect.appendChild(opt);
+      });
+    }
+
+    // Populate Custom IDs
+    if (data.customIds && data.customIds.length) {
+      data.customIds.forEach(id => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = id;
+        customIdSelect.appendChild(opt);
+      });
+    }
+
+    // Populate List Names
+    // For Upload Dropdown (Don't clear, just append if missing to preserve manual/hardcoded)
+    const uploadExistingOptions = Array.from(uploadListSelect.options).map(o => o.value);
+
+    if (data.listNames && data.listNames.length) {
+      data.listNames.forEach(name => {
+        // Add to Upload Dropdown if not already present
+        if (!uploadExistingOptions.includes(name)) {
+          const opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = name;
+          uploadListSelect.appendChild(opt);
+        }
+        // Add to Filter Dropdown (it was cleared, so just append)
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        filterListSelect.appendChild(opt);
+      });
+    }
+
+    // Populate Dispositions
+    const dispositions = data.dispositions || [];
+    const allDispositions = [...new Set(['Sale', ...dispositions])].sort();
+
+    const dropdownContent = document.getElementById('disposition-dropdown-content');
+    dropdownContent.innerHTML = allDispositions.map(d => `
+      <div class="dropdown-item">
+        <input type="checkbox" id="dispo-${d}" value="${d}" class="disposition-checkbox">
+        <label for="dispo-${d}">${d}</label>
+      </div>
+    `).join('');
+
+    // Check if listener is already attached or just re-attach safely
+    const dropdownBtn = document.getElementById('disposition-dropdown-btn');
+    const dropdownBtnText = dropdownBtn.querySelector('span');
+
+    // Remove old listener (clone node trick is one way, or just assume we are careful)
+    // Simpler: Just make sure we don't attach it multiple times by checking a flag or just attach it here 
+    // since this runs on refresh. To be safe, use the .onclick property or named function. 
+    // But .addEventListener is better. Let's use a "initialized" attribute.
+
+    if (!dropdownBtn.hasAttribute('data-listener-attached')) {
+      dropdownBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.getElementById('disposition-dropdown-content').classList.toggle('show');
+      });
+      dropdownBtn.setAttribute('data-listener-attached', 'true');
+    }
+
+    // Also need the close-on-click-outside logic to be global or attached once. 
+    // It's currently in initializeLeadManagement. Let's leave it there or move it to a global init.
+    // The issue was likely the button specific listener.
+
+    // Update button text on change (need to re-attach this too since content is rebuilt?)
+    // Yes, dropdownContent was rewritten with innerHTML, so old listeners on it are GONE.
+    dropdownContent.addEventListener('change', () => {
+      const selected = Array.from(document.querySelectorAll('.disposition-checkbox:checked')).map(cb => cb.value);
+      if (selected.length === 0) {
+        dropdownBtnText.textContent = 'All Dispositions';
+      } else if (selected.length === 1) {
+        dropdownBtnText.textContent = selected[0];
+      } else {
+        dropdownBtnText.textContent = `${selected.length} Selected`;
+      }
+    });
+
+  } catch (err) {
+    console.error('Error fetching filter options:', err);
+    showToast('Failed to load filter options', 'error');
+  }
 }
 
 let allLeadsTable = null;
 let adminLeadsData = []; // Store fetched leads for edit modal access
 
-// Carga y renderiza la tabla principal de leads en el panel de admin.
 // Aplica filtros (agente, disposición, fecha, búsqueda) y configura la paginación.
 async function loadAllLeads() {
   const selectedDispositions = Array.from(document.querySelectorAll('.disposition-checkbox:checked')).map(cb => cb.value);
@@ -523,26 +683,37 @@ async function loadAllLeads() {
   queryString.append('sortBy', 'date');
   queryString.append('sortOrder', sortOrder);
 
+  // Show Loader
+  showLoader('all-leads-container');
+
   try {
     const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/leads?${queryString.toString()}`, {
       headers: { 'Authorization': `Bearer ${userToken}` }
     });
     if (!resp.ok) {
       showToast('Error loading leads');
+      hideLoader('all-leads-container');
       return;
     }
     const leads = await resp.json();
     adminLeadsData = leads; // Store globally
     const list = document.getElementById('all-leads-list');
 
+    // Safely destroy previous table instance
     if (allLeadsTable) {
-      allLeadsTable.destroy();
+      try {
+        allLeadsTable.destroy();
+      } catch (err) {
+        // Ignore destroy error if DOM is already gone
+      }
+      allLeadsTable = null;
     }
 
     list.innerHTML = '';
 
     if (!leads.length) {
       list.innerHTML = '<p style="text-align:center;color:var(--subtext);">No leads match the current filters.</p>';
+      hideLoader('all-leads-container');
       return;
     }
 
@@ -595,6 +766,8 @@ async function loadAllLeads() {
   } catch (err) {
     console.error('Error loading all leads:', err);
     showToast('Connection error while loading leads.');
+  } finally {
+    hideLoader('all-leads-container');
   }
 }
 
@@ -669,6 +842,9 @@ async function reassignSelectedLeads() {
     showToast('Connection error while reassigning leads.');
   }
 }
+
+// Expose to window
+window.reassignSelectedLeads = reassignSelectedLeads;
 
 async function requestPasswordConfirmation() {
   return new Promise((resolve, reject) => {
@@ -873,6 +1049,10 @@ async function handleDeduplicateLeads() {
     showToast('Connection error while previewing duplicates.', 'error');
   }
 }
+
+// Expose functions for onclick handlers
+window.deleteSelectedLeads = deleteSelectedLeads;
+window.handleDeduplicateLeads = handleDeduplicateLeads;
 
 // Confirmar y ejecutar la eliminación de duplicados
 async function confirmDeleteDuplicates() {
@@ -1089,6 +1269,7 @@ async function uploadLeads() {
       fileInput.value = ''; // Clear input
       loadUnassignedLeads(); // Refresh unassigned leads
       loadAllLeads(); // Refresh all leads table
+      loadFilterOptions(); // Refresh filter options (new lists/products)
     } else {
       showToast(`Error: ${result.error || 'Upload failed'}`);
     }
@@ -1102,28 +1283,32 @@ async function uploadLeads() {
 
 // Carga el resumen de usuarios (Leaderboard y Tarjetas de Progreso).
 async function loadUsersSummary() {
-  const users = await getUsersSummary();
   const usersSummaryDiv = document.getElementById('usersSummary');
-  const lastUpdateDiv = document.getElementById('lastUpdate');
-  lastUpdateDiv.textContent = `Last update: ${new Date().toLocaleString()}`;
-  if (!users.length) {
-    usersSummaryDiv.innerHTML = '<p>No users registered.</p>';
-    return;
-  }
-  usersSummaryDiv.innerHTML = users.map(user => {
-    const stats = user.stats || {};
-    const sinRespuesta = (stats.NA || 0) + (stats.VM || 0) + (stats.DC || 0);
-    const leads = (stats.FUTURE || 0) + (stats['ND/SD'] || 0);
-    const contactos = Object.keys(stats).reduce((acc, key) => {
-      if (key !== 'NA' && key !== 'VM' && key !== 'DC') {
-        return acc + stats[key];
-      }
-      return acc;
-    }, 0);
-    const progress = user.progress || { currentIndex: 0, total: 0 };
-    const progressPercentage = progress.total > 0 ? (((progress.currentIndex + 1) / progress.total) * 100).toFixed(1) : 0;
+  if (usersSummaryDiv) showLoader('usersSummary');
 
-    return `
+  try {
+    const users = await getUsersSummary();
+    const usersSummaryDiv = document.getElementById('usersSummary');
+    const lastUpdateDiv = document.getElementById('lastUpdate');
+    lastUpdateDiv.textContent = `Last update: ${new Date().toLocaleString()}`;
+    if (!users.length) {
+      usersSummaryDiv.innerHTML = '<p>No users registered.</p>';
+      return;
+    }
+    usersSummaryDiv.innerHTML = users.map(user => {
+      const stats = user.stats || {};
+      const sinRespuesta = (stats.NA || 0) + (stats.VM || 0) + (stats.DC || 0);
+      const leads = (stats.FUTURE || 0) + (stats['ND/SD'] || 0);
+      const contactos = Object.keys(stats).reduce((acc, key) => {
+        if (key !== 'NA' && key !== 'VM' && key !== 'DC') {
+          return acc + stats[key];
+        }
+        return acc;
+      }, 0);
+      const progress = user.progress || { currentIndex: 0, total: 0 };
+      const progressPercentage = progress.total > 0 ? (((progress.currentIndex + 1) / progress.total) * 100).toFixed(1) : 0;
+
+      return `
     <div style="background:var(--bg);border:1px solid var(--border);padding:12px;border-radius:8px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div style="font-weight:700;color:var(--accent);">${escapeHtml(user.username)} ${user.role === 'admin' ? '(Admin)' : ''}</div>
@@ -1150,33 +1335,33 @@ async function loadUsersSummary() {
         <button class="small-btn" onclick="openAgentProfile('${user.id}', '${escapeHtml(user.username)}')"><i data-feather="bar-chart-2"></i> Profile</button>
 
         ${user.role !== 'admin' ?
-        `<button class="small-btn secondary" onclick='openEditModal(${JSON.stringify(user)})'><i data-feather="edit"></i> Edit</button>
+          `<button class="small-btn secondary" onclick='openEditModal(${JSON.stringify(user)})'><i data-feather="edit"></i> Edit</button>
          <button class="small-btn danger-btn" onclick="handleDeleteUser('${user.id}')"><i data-feather="trash-2"></i> Delete</button>` : ''}
       </div>
     </div>`;
-  }).join('');
-  feather.replace();
+    }).join('');
+    feather.replace();
 
-  // Populate Leaderboard
-  const agents = users.filter(u => u.role === 'agent');
-  const sortedAgents = agents.sort((a, b) => {
-    const statsA = a.stats || {};
-    const statsB = b.stats || {};
-    const leadsA = (statsA.FUTURE || 0) + (statsA['ND/SD'] || 0);
-    const leadsB = (statsB.FUTURE || 0) + (statsB['ND/SD'] || 0);
-    return leadsB - leadsA; // Descending order
-  }).slice(0, 3); // Top 3
+    // Populate Leaderboard
+    const agents = users.filter(u => u.role === 'agent');
+    const sortedAgents = agents.sort((a, b) => {
+      const statsA = a.stats || {};
+      const statsB = b.stats || {};
+      const leadsA = (statsA.FUTURE || 0) + (statsA['ND/SD'] || 0);
+      const leadsB = (statsB.FUTURE || 0) + (statsB['ND/SD'] || 0);
+      return leadsB - leadsA; // Descending order
+    }).slice(0, 3); // Top 3
 
-  const leaderboardDiv = document.getElementById('leaderboardContainer');
-  if (!sortedAgents.length) {
-    leaderboardDiv.innerHTML = '<p>No data for leaderboard yet.</p>';
-  } else {
-    leaderboardDiv.innerHTML = sortedAgents.map((agent, index) => {
-      const stats = agent.stats || {};
-      const leads = (stats.FUTURE || 0) + (stats['ND/SD'] || 0);
-      const medals = ['🥇', '🥈', '🥉'];
+    const leaderboardDiv = document.getElementById('leaderboardContainer');
+    if (!sortedAgents.length) {
+      leaderboardDiv.innerHTML = '<p>No data for leaderboard yet.</p>';
+    } else {
+      leaderboardDiv.innerHTML = sortedAgents.map((agent, index) => {
+        const stats = agent.stats || {};
+        const leads = (stats.FUTURE || 0) + (stats['ND/SD'] || 0);
+        const medals = ['🥇', '🥈', '🥉'];
 
-      return `
+        return `
       <div style="background:var(--card);border:1px solid var(--border);padding:16px;border-radius:8px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow);">
         <div style="font-size:2em;">${medals[index]}</div>
         <div>
@@ -1184,7 +1369,12 @@ async function loadUsersSummary() {
           <div style="color:var(--accent);font-weight:600;">${leads} Leads</div>
         </div>
       </div>`;
-    }).join('');
+      }).join('');
+    }
+  } catch (err) {
+    console.error('Error loading users summary:', err);
+  } finally {
+    hideLoader('usersSummary');
   }
 }
 
@@ -2699,3 +2889,6 @@ Lead Status: ${leadStatus}
     showToast('Failed to copy', 'error');
   });
 }
+
+// Ensure session check runs on load
+checkExistingSession();
