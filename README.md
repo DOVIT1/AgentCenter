@@ -1,48 +1,81 @@
 # Documentación del Sistema de Gestión de Call Center (DOV Agent Backend)
 
 ## 1. Descripción General
-Esta aplicación es una solución integral para la gestión de operaciones de Call Center, diseñada para facilitar la interacción entre Administradores y Agentes. Permite la distribución eficiente de leads (clientes potenciales), el seguimiento de llamadas y el análisis de rendimiento en tiempo real, integrándose con la telefonía de RingCentral.
 
-## 2. Arquitectura y Funcionamiento
+Esta aplicación es una solución integral para la gestión de operaciones de Call Center, diseñada para facilitar la interacción entre Administradores y Agentes. Permite la distribución eficiente de leads, el seguimiento de llamadas y el análisis de rendimiento en tiempo real, integrándose con la telefonía de RingCentral.
 
-### Backend (El Motor)
+---
+
+## 2. Nueva Arquitectura Modular y Seguridad (Actualización V1)
+
+El sistema ha sido refactorizado para mejorar la escalabilidad, el mantenimiento y la seguridad del código.
+
+### Frontend (Modular y Ofuscado)
+
+- **Arquitectura Modular**: El código fuente se encuentra en `public/js/modules/`.
+  - `main.js`: Punto de entrada y configuración de seguridad.
+  - `auth.js`, `admin.js`, `agent.js`: Lógica separada por funcionalidad.
+  - `state.js`, `config.js`, `utils.js`: Gestión de estado y utilidades compartidas.
+- **Bundling & Ofuscación**:
+  - Se utiliza **Webpack** para empaquetar todos los módulos en un solo archivo: `public/js/dist/bundle.js`.
+  - El código es **ofuscado** (vía `webpack-obfuscator`) para proteger la lógica de negocio, haciendo imposible su lectura o ingeniería inversa.
+- **Seguridad HTML**:
+  - **Minificación de HTML**: El servidor comprime el HTML antes de enviarlo, eliminando espacios y comentarios.
+  - **Protección Anti-Inspección**: Scripts que bloquean el clic derecho y atajos de desarrollador (F12, Ctrl+Shift+I).
+- **Plantillas EJS**: El antiguo `index.html` ha sido migrado a `views/index.ejs` y dividido en componentes reutilizables (`partials/`).
+
+### Backend (Motor)
+
 - **Tecnología**: Node.js con Express.js.
-- **Base de Datos**: MongoDB (NoSQL) para un almacenamiento flexible y escalable de usuarios y leads.
-- **Autenticación**: Sistema seguro basado en JWT (JSON Web Tokens) para proteger las rutas y diferenciar roles (Admin vs Agente).
-- **Comunicación en Tiempo Real**: Implementación de **Socket.io** para que los cambios (como una nueva disposición de llamada) se reflejen instantáneamente en el panel del administrador sin necesidad de recargar la página.
+- **Base de Datos**: MongoDB con optimización para grandes volúmenes de datos (`allowDiskUse`).
+- **Seguridad**: Headers HTTP seguros (Helmet), autenticación JWT y limpieza de HTML.
+- **Tiempo Real**: Socket.io para actualizaciones instantáneas entre agentes y administradores.
 
-### Frontend (La Interfaz)
-- **Tecnología**: Vanilla JavaScript, HTML5 y CSS3.
-- **Diseño**: Interfaz limpia y moderna con soporte para **Modo Oscuro**, optimizada para la productividad.
-- **Experiencia de Usuario**: Uso de notificaciones tipo "Toast" para feedback inmediato y modales para interacciones fluidas.
+---
 
-### Integraciones
-- **RingCentral API**: Conexión directa con la plataforma de telefonía para extraer estadísticas de llamadas (duración, cantidad) y compararlas con la productividad registrada en la app.
+## 3. Guía de Desarrollo
 
-## 3. Cualidades y Funcionalidades Clave
+### Instalación
+
+```bash
+npm install
+```
+
+### Ejecutar en Desarrollo
+
+```bash
+npm start
+```
+
+### Modificar el Frontend
+
+**IMPORTANTE**: No edite `public/js/dist/bundle.js` directamente.
+
+1. Realice cambios en los archivos fuente dentro de `public/js/modules/`.
+2. Compile los cambios ejecutando:
+   ```bash
+   npm run build
+   ```
+3. Recargue la página para ver los cambios.
+
+---
+
+## 4. Funcionalidades Clave
 
 ### Para el Administrador
+
 - **Gestión de Usuarios**: Crear, editar y eliminar cuentas de agentes.
-- **Gestión de Leads**:
-    - Carga masiva de leads mediante archivos CSV.
-    - Asignación y reasignación inteligente de leads a agentes específicos.
-    - Filtrado avanzado por fecha, disposición, producto o lista.
-- **Dashboard de Analítica**:
-    - Vista global del rendimiento del Call Center.
-    - Estadísticas detalladas por agente (Tasa de Contacto, Tasa de Conversión).
-    - Integración de métricas de telefonía (RingCentral).
+- **Gestión de Leads**: Carga masiva (CSV), asignación inteligente y filtrado avanzado.
+- **Dashboard de Analítica**: Métricas en tiempo real y estadísticas de RingCentral.
 
 ### Para el Agente
-- **Flujo de Trabajo Optimizado**: Interfaz enfocada en "un lead a la vez" para minimizar distracciones.
-- **Historial y Seguimiento**: Registro automático de todas las interacciones con un cliente.
-- **Gestión de Callbacks**: Sistema para agendar y recordar llamadas de seguimiento.
-- **Métricas Personales**: Visualización de su propio progreso y estadísticas diarias.
 
-## 4. Fortalezas del Sistema
+- **Interfaz Unificada**: Todo lo necesario en una sola pantalla.
+- **Gestión de Llamadas**: Historial automático, agenda de callbacks y métricas personales.
 
-1.  **Reactividad (Real-Time)**: La capacidad de ver la actividad de los agentes en vivo permite a los supervisores tomar decisiones inmediatas.
-2.  **Escalabilidad**: Al usar MongoDB, el sistema puede manejar grandes volúmenes de datos (miles de leads) sin perder rendimiento.
-3.  **Seguridad**: Protección robusta con encriptación de contraseñas (bcryptjs), headers de seguridad (Helmet) y limitación de tasa de peticiones (Rate Limiting) para evitar ataques de fuerza bruta.
-4.  **Flexibilidad**: El sistema de filtrado y la capacidad de manejar múltiples listas de leads permiten adaptar la herramienta a diferentes campañas o productos.
-5.  **Integración Unificada**: Combina la gestión de datos (CRM) con las métricas de telefonía en un solo lugar, eliminando la necesidad de consultar múltiples plataformas.
-6.  **Resiliencia**: Manejo de errores robusto, incluyendo correcciones automáticas para desincronización de relojes (Clock Skew) con APIs externas.
+---
+
+## 5. Integraciones
+
+- **RingCentral API**: Sincronización de datos de telefonía.
+- **Socket.io**: Comunicación bidireccional en tiempo real.
