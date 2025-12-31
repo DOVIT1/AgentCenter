@@ -4,6 +4,14 @@
 
 Esta aplicación es una solución integral para la gestión de operaciones de Call Center, diseñada para facilitar la interacción entre Administradores y Agentes. Permite la distribución eficiente de leads, el seguimiento de llamadas y el análisis de rendimiento en tiempo real, integrándose con la telefonía de RingCentral.
 
+## 📚 Documentación Técnica Detallada
+
+Para una comprensión profunda del sistema, consulte los siguientes documentos:
+
+- **[Arquitectura del Sistema](docs/ARQUITECTURA_SISTEMA.md)**: Visión general técnica, seguridad y flujo de datos.
+- **[Referencia de API](docs/REFERENCIA_API.md)**: Documentación de endpoints del Backend (`/auth`, `/admin`, `/agent`).
+- **[Manual del Frontend](docs/MANUAL_FRONTEND.md)**: Guía de la estructura modular y lógica de la UI.
+
 ---
 
 ## 2. Nueva Arquitectura Modular y Seguridad (Actualización V1)
