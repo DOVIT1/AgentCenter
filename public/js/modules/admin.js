@@ -744,8 +744,8 @@ async function loadUnassignedLeads() {
         const leads = await resp.json();
         // Implementation for loading into a different table (not used in current view but good to have)
     } catch (err) { }
-    // NOTE: This function was in script.js but seemed unused or for a legacy view? 
-    // Ah, it was used in `uploadLeads` success callback? Yes. 
+    // NOTE: This function was in script.js is legacy  
+    // 
     // But `uploadLeads` refreshes `loadAllLeads` too.
 }
 
