@@ -97,6 +97,20 @@ async function connectDB() {
     await client.connect();
     db = client.db(DB_NAME);
     console.log("🚀 Conectado a MongoDB");
+
+    // Create Indexes for Optimization
+    // These indexes help with sorting by date, filtering by agent, and searching/filtering
+    try {
+      await db.collection("leads").createIndex({ Timestamp: -1 });
+      await db.collection("leads").createIndex({ assignedTo: 1 });
+      await db.collection("leads").createIndex({ DISPOSITION: 1 });
+      await db.collection("leads").createIndex({ listName: 1 });
+      await db.collection("leads").createIndex({ Phone: 1 });
+      console.log("✅ Índices verificados/creados correctamente");
+    } catch (indexErr) {
+      console.error("⚠️ Error creating indexes (non-fatal):", indexErr);
+    }
+
   } catch (err) {
     console.error("Error conectando a MongoDB:", err);
     process.exit(1);
@@ -628,6 +642,8 @@ app.get("/admin/leads", authAdmin, async (req, res) => {
       query.DISPOSITION = disposition;
     }
   }
+
+  console.log("DEBUG /admin/leads params:", { page: req.query.page, limit: req.query.limit, filters: req.query });
   if (assignedTo) {
     if (assignedTo === 'unassigned') {
       query.assignedTo = null;
@@ -677,36 +693,63 @@ app.get("/admin/leads", authAdmin, async (req, res) => {
     // Default sort: newest first
     sortOptions['Timestamp'] = -1;
   }
+  // Pagination defaults
+  const pageNum = parseInt(req.query.page) || 1;
+  const limitNum = parseInt(req.query.limit) || 50;
+  const skip = (pageNum - 1) * limitNum;
 
   try {
-    const leads = await db.collection("leads").aggregate([
+    const data = await db.collection("leads").aggregate([
       { $match: query },
       { $sort: sortOptions },
       {
-        $lookup: {
-          from: "users",
-          localField: "assignedTo",
-          foreignField: "_id",
-          as: "agent"
-        }
-      },
-      {
-        $unwind: {
-          path: "$agent",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
-        $project: {
-          "agent.password": 0, // Excluir el password del agente
-          "agent.stats": 0,
-          "agent.lastActivity": 0,
-          "agent.email": 0,
-          "agent.role": 0,
+        $facet: {
+          metadata: [{ $count: "total" }],
+          data: [
+            { $skip: skip },
+            { $limit: limitNum },
+            {
+              $lookup: {
+                from: "users",
+                localField: "assignedTo",
+                foreignField: "_id",
+                as: "agent"
+              }
+            },
+            {
+              $unwind: {
+                path: "$agent",
+                preserveNullAndEmptyArrays: true
+              }
+            },
+            {
+              $project: {
+                "agent.password": 0,
+                "agent.stats": 0,
+                "agent.lastActivity": 0,
+                "agent.email": 0,
+                "agent.role": 0,
+              }
+            }
+          ]
         }
       }
-    ]).toArray();
-    res.json(leads);
+    ], { allowDiskUse: true }).toArray();
+
+    const result = data[0];
+    const total = result.metadata[0] ? result.metadata[0].total : 0;
+    const leads = result.data;
+
+    console.log(`DEBUG /admin/leads result: Found ${total} total, returning ${leads.length} leads.`);
+
+    res.json({
+      leads,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum)
+    });
+
   } catch (err) {
     console.error("Error loading leads for admin:", err);
     res.status(500).json({ error: "Error al cargar los leads" });

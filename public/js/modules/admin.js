@@ -3,7 +3,9 @@ import { state } from './state.js';
 import { showToast, showLoader, hideLoader, escapeHtml } from './utils.js';
 import { logout, createUser } from './auth.js';
 
-let allLeadsTable = null;
+// let allLeadsTable = null; // Removed DataTable
+let currentPage = 1;
+const itemsPerPage = 50;
 let unassignedLeadsTable = null;
 let agentChart = null;
 let adminLeadsData = [];
@@ -333,7 +335,7 @@ export async function handleDeleteUser(userId) {
 function initializeLeadManagement() {
     const filterBtn = document.getElementById('filter-leads-btn');
     if (filterBtn) {
-        filterBtn.onclick = loadAllLeads;
+        filterBtn.onclick = () => loadAllLeads(1);
     }
     document.getElementById('reassign-selected-leads-btn').addEventListener('click', reassignSelectedLeads);
 
@@ -460,7 +462,8 @@ export async function loadFilterOptions() {
     }
 }
 
-export async function loadAllLeads() {
+export async function loadAllLeads(page = 1) {
+    currentPage = page;
     const selectedDispositions = Array.from(document.querySelectorAll('.disposition-checkbox:checked')).map(cb => cb.value);
     const agentId = document.getElementById('lead-filter-agent').value;
     const product = document.getElementById('lead-filter-product').value;
@@ -485,6 +488,10 @@ export async function loadAllLeads() {
     queryString.append('sortBy', 'date');
     queryString.append('sortOrder', sortOrder);
 
+    // Pagination params
+    queryString.append('page', currentPage);
+    queryString.append('limit', itemsPerPage);
+
     showLoader('all-leads-container');
 
     try {
@@ -495,66 +502,114 @@ export async function loadAllLeads() {
             showToast('Error loading leads');
             return;
         }
-        const leads = await resp.json();
-        adminLeadsData = leads;
+
+        const responseData = await resp.json();
+        const leads = responseData.leads;
+        adminLeadsData = leads; // Update global data for modals
+
         const list = document.getElementById('all-leads-list');
-        if (allLeadsTable) {
-            try { allLeadsTable.destroy(); } catch (err) { }
-            allLeadsTable = null;
-        }
         list.innerHTML = '';
-        if (!leads.length) {
+
+        if (!leads || !leads.length) {
             list.innerHTML = '<p style="text-align:center;color:var(--subtext);">No leads match the current filters.</p>';
+            renderPagination(0, 1, 1); // Reset pagination
             return;
         }
-        const table = document.createElement('table');
-        table.id = 'all-leads-table';
-        list.appendChild(table);
 
-        allLeadsTable = new DataTable(table, {
-            data: {
-                headings: ['<input type="checkbox" id="select-all-filtered-leads">', 'List', 'Name', 'Phone', 'Disposition', 'Callback Date', 'Agent', 'Product', 'Last Modified', 'Actions'],
-                data: leads.map(lead => [
-                    `<input type="checkbox" class="filtered-lead-checkbox" value="${lead._id}">`,
-                    lead.listName || 'N/A',
-                    lead.Name || 'No Name',
-                    lead.Phone || 'No Phone',
-                    lead.DISPOSITION || 'N/A',
-                    lead.callbackDate ? new Date(lead.callbackDate).toLocaleString() : 'N/A',
-                    lead.agent ? lead.agent.username : 'Unassigned',
-                    lead.Product || 'N/A',
-                    lead.Timestamp ? new Date(lead.Timestamp).toLocaleString() : 'N/A',
-                    `<div style="display:flex; gap:5px;">
-             <button class="small-btn" style="padding: 4px 8px; font-size: 0.75rem; color: var(--success); border-color: var(--success);" onclick="markAsSale('${lead._id}')" title="Mark as Sale">
-               <i data-feather="dollar-sign" style="width: 12px; height: 12px;"></i>
-             </button>
-             <button class="small-btn secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="openAdminEditLeadModal('${lead._id}')" title="Edit Lead">
-               <i data-feather="edit-2" style="width: 12px; height: 12px;"></i>
-             </button>
-           </div>`
-                ])
-            },
-            perPage: 10,
-            perPageSelect: [10, 20, 50, 100],
-            searchable: true,
-            sortable: true,
+        // Render Table Manually
+        let tableHtml = `
+        <div style="overflow-x:auto;">
+        <table id="all-leads-table" style="width:100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background:var(--card); text-align:left; border-bottom: 2px solid var(--border);">
+                    <th style="padding:10px;"><input type="checkbox" id="select-all-filtered-leads"></th>
+                    <th style="padding:10px;">List</th>
+                    <th style="padding:10px;">Name</th>
+                    <th style="padding:10px;">Phone</th>
+                    <th style="padding:10px;">Disposition</th>
+                    <th style="padding:10px;">Callback Date</th>
+                    <th style="padding:10px;">Agent</th>
+                    <th style="padding:10px;">Product</th>
+                    <th style="padding:10px;">Last Modified</th>
+                    <th style="padding:10px;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+        `;
+
+        leads.forEach(lead => {
+            tableHtml += `
+            <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:10px;"><input type="checkbox" class="filtered-lead-checkbox" value="${lead._id}"></td>
+                <td style="padding:10px;">${escapeHtml(lead.listName || 'N/A')}</td>
+                <td style="padding:10px;">${escapeHtml(lead.Name || 'No Name')}</td>
+                <td style="padding:10px;">${escapeHtml(lead.Phone || 'No Phone')}</td>
+                <td style="padding:10px;">${escapeHtml(lead.DISPOSITION || 'N/A')}</td>
+                <td style="padding:10px;">${lead.callbackDate ? new Date(lead.callbackDate).toLocaleString() : 'N/A'}</td>
+                <td style="padding:10px;">${lead.agent ? escapeHtml(lead.agent.username) : 'Unassigned'}</td>
+                <td style="padding:10px;">${escapeHtml(lead.Product || 'N/A')}</td>
+                <td style="padding:10px;">${lead.Timestamp ? new Date(lead.Timestamp).toLocaleString() : 'N/A'}</td>
+                <td style="padding:10px;">
+                    <div style="display:flex; gap:5px;">
+                         <button class="small-btn" style="padding: 4px 8px; font-size: 0.75rem; color: var(--success); border-color: var(--success);" onclick="markAsSale('${lead._id}')" title="Mark as Sale">
+                           <i data-feather="dollar-sign" style="width: 12px; height: 12px;"></i>
+                         </button>
+                         <button class="small-btn secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="openAdminEditLeadModal('${lead._id}')" title="Edit Lead">
+                           <i data-feather="edit-2" style="width: 12px; height: 12px;"></i>
+                         </button>
+                    </div>
+                </td>
+            </tr>`;
         });
 
-        allLeadsTable.on('datatable.page', () => feather.replace());
-        allLeadsTable.on('datatable.sort', () => feather.replace());
-        allLeadsTable.on('datatable.perpage', () => feather.replace());
-        allLeadsTable.on('datatable.search', () => feather.replace());
+        tableHtml += '</tbody></table></div>';
+
+        // Append Pagination Controls Container
+        tableHtml += `<div id="pagination-container" style="display:flex; justify-content:center; align-items:center; margin-top:20px; gap:15px;"></div>`;
+
+        list.innerHTML = tableHtml;
+
+        // Render Pagination Controls
+        renderPagination(responseData.total, responseData.page, responseData.totalPages);
+
         if (window.feather) feather.replace();
 
         document.getElementById('select-all-filtered-leads').addEventListener('change', (e) => {
             document.querySelectorAll('.filtered-lead-checkbox').forEach(checkbox => { checkbox.checked = e.target.checked; });
         });
+
     } catch (err) {
         console.error('Error loading all leads:', err);
         showToast('Connection error while loading leads.');
     } finally {
         hideLoader('all-leads-container');
     }
+}
+
+function renderPagination(totalItems, currentPage, totalPages) {
+    const container = document.getElementById('pagination-container');
+    if (!container) return;
+
+    if (totalItems === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    let controlsHtml = `
+        <button id="prev-page-btn" class="small-btn secondary" ${currentPage <= 1 ? 'disabled' : ''} style="opacity: ${currentPage <= 1 ? 0.5 : 1}">Previous</button>
+        <span style="color:var(--text);">Page <strong>${currentPage}</strong> of ${totalPages} (${totalItems} items)</span>
+        <button id="next-page-btn" class="small-btn secondary" ${currentPage >= totalPages ? 'disabled' : ''} style="opacity: ${currentPage >= totalPages ? 0.5 : 1}">Next</button>
+    `;
+
+    container.innerHTML = controlsHtml;
+
+    document.getElementById('prev-page-btn').onclick = () => {
+        if (currentPage > 1) loadAllLeads(currentPage - 1);
+    };
+
+    document.getElementById('next-page-btn').onclick = () => {
+        if (currentPage < totalPages) loadAllLeads(currentPage + 1);
+    };
 }
 
 export async function markAsSale(leadId) {
