@@ -96,7 +96,7 @@ async function connectDB() {
     const client = new MongoClient(MONGO_URI);
     await client.connect();
     db = client.db(DB_NAME);
-    console.log("🚀 Conectado a MongoDB");
+    console.log("🚀 Connected to MongoDB");
 
     // Create Indexes for Optimization
     // These indexes help with sorting by date, filtering by agent, and searching/filtering
@@ -106,13 +106,13 @@ async function connectDB() {
       await db.collection("leads").createIndex({ DISPOSITION: 1 });
       await db.collection("leads").createIndex({ listName: 1 });
       await db.collection("leads").createIndex({ Phone: 1 });
-      console.log("✅ Índices verificados/creados correctamente");
+      console.log("✅ Indexes verified/created successfully");
     } catch (indexErr) {
       console.error("⚠️ Error creating indexes (non-fatal):", indexErr);
     }
 
   } catch (err) {
-    console.error("Error conectando a MongoDB:", err);
+    console.error("Error connecting to MongoDB:", err);
     process.exit(1);
   }
 }
@@ -127,9 +127,9 @@ app.use(express.json());
 // Limitador de tasa para el login.
 // Previene ataques de fuerza bruta limitando los intentos fallidos desde una misma IP.
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 10, // Limita cada IP a 10 peticiones por ventana
-  message: "Demasiados intentos de inicio de sesión, por favor intente de nuevo en 15 minutos",
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 requests per window
+  message: "Too many login attempts, please try again in 15 minutes",
 });
 
 const upload = multer({ dest: 'uploads/' });
@@ -144,10 +144,10 @@ app.post("/auth/login", loginLimiter, async (req, res) => {
   const { username, password } = req.body;
   const users = await db.collection("users").find().toArray();
   const user = users.find((u) => u.username === username);
-  if (!user) return res.status(401).json({ success: false, error: "Usuario no encontrado" });
+  if (!user) return res.status(401).json({ success: false, error: "User not found" });
 
   const valid = await bcrypt.compare(password, user.password);
-  if (!valid) return res.status(401).json({ success: false, error: "Contraseña incorrecta" });
+  if (!valid) return res.status(401).json({ success: false, error: "Incorrect password" });
 
   // Generate and store session ID to enforce single session
   const sessionId = randomUUID();
@@ -165,51 +165,49 @@ app.post("/auth/login", loginLimiter, async (req, res) => {
 });
 
 // Middlewares de autenticación
-// Middleware de autenticación para Administradores.
-// Verifica que el token JWT sea válido y que el rol sea 'admin'.
+// Auth middleware for Admins
 const authAdmin = async (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: "Falta token" });
+  if (!authHeader) return res.status(401).json({ error: "Token missing" });
 
   try {
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, SECRET);
-    if (decoded.role !== "admin") return res.status(403).json({ error: "No autorizado" });
+    if (decoded.role !== "admin") return res.status(403).json({ error: "Unauthorized" });
 
     // Verify session ID matches the one in DB
     const user = await db.collection("users").findOne({ _id: new ObjectId(decoded.id) });
     if (!user || user.sessionId !== decoded.sessionId) {
-      return res.status(401).json({ error: "Sesión expirada. Se ha iniciado sesión en otro dispositivo." });
+      return res.status(401).json({ error: "Session expired. Signed in on another device." });
     }
 
     req.user = decoded;
     next();
   } catch (err) {
-    res.status(401).json({ error: "Token inválido" });
+    res.status(401).json({ error: "Invalid token" });
   }
 };
 
-// Middleware de autenticación para Agentes.
-// Verifica que el token JWT sea válido y que el rol sea 'agent'.
+// Auth middleware for Agents
 const authAgent = async (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: "Falta token" });
+  if (!authHeader) return res.status(401).json({ error: "Token missing" });
 
   try {
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, SECRET);
-    if (decoded.role !== "agent") return res.status(403).json({ error: "No autorizado" });
+    if (decoded.role !== "agent") return res.status(403).json({ error: "Unauthorized" });
 
     // Verify session ID matches the one in DB
     const user = await db.collection("users").findOne({ _id: new ObjectId(decoded.id) });
     if (!user || user.sessionId !== decoded.sessionId) {
-      return res.status(401).json({ error: "Sesión expirada. Se ha iniciado sesión en otro dispositivo." });
+      return res.status(401).json({ error: "Session expired. Signed in on another device." });
     }
 
     req.user = decoded;
     next();
   } catch (err) {
-    res.status(401).json({ error: "Token inválido" });
+    res.status(401).json({ error: "Invalid token" });
   }
 };
 
@@ -225,7 +223,7 @@ app.post("/auth/register", authAdmin, async (req, res) => {
   if (!username || !password) return res.status(400).json({ error: "Username and password are required" });
 
   const existingUser = await db.collection("users").findOne({ username });
-  if (existingUser) return res.status(400).json({ error: "Usuario ya existe" });
+  if (existingUser) return res.status(400).json({ error: "User already exists" });
 
   const hashed = await bcrypt.hash(password, 10);
   const newUser = {
@@ -239,7 +237,7 @@ app.post("/auth/register", authAdmin, async (req, res) => {
 
   await db.collection("users").insertOne(newUser);
 
-  res.json({ success: true, message: "Usuario creado exitosamente" });
+  res.json({ success: true, message: "User created successfully" });
 });
 
 // Obtener lista de usuarios con progreso y estadísticas diarias.
@@ -293,7 +291,7 @@ app.get("/admin/users", authAdmin, async (req, res) => {
         total: assignedLeads,
       },
       role: user.role,
-      filename: assignedLeads > 0 ? `Leads asignados: ${assignedLeads}` : 'Sin leads',
+      filename: assignedLeads > 0 ? `Assigned Leads: ${assignedLeads}` : 'No leads',
     };
   }));
 
@@ -369,25 +367,25 @@ app.put("/admin/users/:id", authAdmin, async (req, res) => {
     }
 
     await db.collection("users").updateOne({ _id: new ObjectId(id) }, { $set: updateFields });
-    res.json({ success: true, message: "Usuario actualizado correctamente" });
+    res.json({ success: true, message: "User updated successfully" });
   } catch (err) {
     console.error("Error updating user:", err);
-    res.status(500).json({ error: "Error al actualizar el usuario" });
+    res.status(500).json({ error: "Error updating user" });
   }
 });
 
-// Obtener estadísticas de un usuario específico en un rango de fechas.
+// Get user stats
 app.get("/admin/users/:id/stats", authAdmin, async (req, res) => {
   const { id } = req.params;
   const { startDate, endDate } = req.query;
 
   if (!startDate || !endDate) {
-    return res.status(400).json({ error: "Busqueda de fechas requerida" });
+    return res.status(400).json({ error: "Date search required" });
   }
 
   try {
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "ID de usuario inválido" });
+      return res.status(400).json({ error: "Invalid User ID" });
     }
 
     // Convert dates to ISO strings for comparison
@@ -446,7 +444,7 @@ app.get("/admin/users/:id/stats", authAdmin, async (req, res) => {
 
   } catch (err) {
     console.error("Error getting user stats:", err);
-    res.status(500).json({ error: "Error al obtener estadísticas del usuario" });
+    res.status(500).json({ error: "Error getting user stats" });
   }
 });
 
@@ -455,27 +453,27 @@ app.delete("/admin/users/:id", authAdmin, async (req, res) => {
 
   try {
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "ID de usuario inválido" });
+      return res.status(400).json({ error: "Invalid User ID" });
     }
     const userToDelete = await db.collection("users").findOne({ _id: new ObjectId(id) });
 
     if (!userToDelete) {
-      return res.status(404).json({ error: "Usuario no encontrado" });
+      return res.status(404).json({ error: "User not found" });
     }
 
     if (userToDelete.role === 'admin') {
-      return res.status(400).json({ error: "No se puede eliminar a un administrador" });
+      return res.status(400).json({ error: "Cannot delete an administrator" });
     }
 
     await db.collection("users").deleteOne({ _id: new ObjectId(id) });
 
-    // Opcional: Desasignar leads del usuario eliminado
+    // Optional: Unassign leads from deleted user
     await db.collection("leads").updateMany({ assignedTo: new ObjectId(id) }, { $set: { assignedTo: null } });
 
-    res.json({ success: true, message: "Usuario eliminado correctamente" });
+    res.json({ success: true, message: "User deleted successfully" });
   } catch (err) {
     console.error("Error deleting user:", err);
-    res.status(500).json({ error: "Error al eliminar el usuario" });
+    res.status(500).json({ error: "Error deleting user" });
   }
 });
 
@@ -507,13 +505,12 @@ app.delete("/admin/leads/bulk", authAdmin, async (req, res) => {
   }
 });
 
-// Carga masiva de leads desde un archivo CSV.
-// Parsea el archivo, asigna campos por defecto y guarda en la base de datos.
+// Bulk upload leads from CSV
 app.post("/admin/upload", authAdmin, upload.single('file'), async (req, res) => {
   const { listName, customId } = req.body;
 
   if (!req.file || !listName || !customId) {
-    return res.status(400).json({ error: "Faltan datos (archivo, nombre de lista o Custom ID)" });
+    return res.status(400).json({ error: "Missing data (file, list name or Custom ID)" });
   }
 
   const filePath = req.file.path;
@@ -540,15 +537,15 @@ app.post("/admin/upload", authAdmin, upload.single('file'), async (req, res) => 
         fs.unlink(filePath, (err) => {
           if (err) console.error("Error deleting temp file:", err);
         });
-        res.json({ success: true, message: `${results.length} leads subidos a la lista '${listName}'` });
+        res.json({ success: true, message: `${results.length} leads uploaded to list '${listName}'` });
       } catch (err) {
         console.error("Error inserting leads:", err);
-        res.status(500).json({ error: "Error al guardar los leads en la base de datos" });
+        res.status(500).json({ error: "Error saving leads to database" });
       }
     })
     .on('error', (err) => {
       console.error("Error parsing CSV:", err);
-      res.status(500).json({ error: "Error al procesar el archivo CSV" });
+      res.status(500).json({ error: "Error processing CSV file" });
     });
 });
 
@@ -558,7 +555,7 @@ app.get("/admin/leads/unassigned", authAdmin, async (req, res) => {
     res.json(unassignedLeads);
   } catch (err) {
     console.error("Error loading unassigned leads:", err);
-    res.status(500).json({ error: "Error al cargar los leads no asignados" });
+    res.status(500).json({ error: "Error loading unassigned leads" });
   }
 });
 
@@ -566,7 +563,7 @@ app.post("/admin/assign", authAdmin, async (req, res) => {
   const { userId, leadsToAssign } = req.body;
 
   if (!userId || !leadsToAssign || !leadsToAssign.length) {
-    return res.status(400).json({ error: "Datos incompletos para la asignación" });
+    return res.status(400).json({ error: "Incomplete data for assignment" });
   }
 
   try {
@@ -577,15 +574,15 @@ app.post("/admin/assign", authAdmin, async (req, res) => {
       { $set: { assignedTo: new ObjectId(userId) } }
     );
 
-    res.json({ success: true, message: "Leads asignados correctamente." });
+    res.json({ success: true, message: "Leads assigned successfully." });
 
   } catch (err) {
     console.error("Error assigning leads:", err);
-    res.status(500).json({ error: "Error al asignar los leads." });
+    res.status(500).json({ error: "Error assigning leads." });
   }
 });
 
-// Obtiene opciones únicas para filtros (Productos y Compañías Anteriores)
+// Get unique filter options
 app.get("/admin/filters/options", authAdmin, async (req, res) => {
   try {
     const products = await db.collection("leads").distinct("Product");
@@ -625,7 +622,7 @@ app.get("/admin/filters/options", authAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error("Error fetching filter options:", err);
-    res.status(500).json({ error: "Error al obtener opciones de filtro" });
+    res.status(500).json({ error: "Error fetching filter options" });
   }
 });
 
@@ -752,7 +749,7 @@ app.get("/admin/leads", authAdmin, async (req, res) => {
 
   } catch (err) {
     console.error("Error loading leads for admin:", err);
-    res.status(500).json({ error: "Error al cargar los leads" });
+    res.status(500).json({ error: "Error loading leads" });
   }
 });
 
@@ -781,10 +778,10 @@ app.post("/admin/leads/reassign", authAdmin, async (req, res) => {
       { $set: { assignedTo: objectNewUserId } }
     );
 
-    res.json({ success: true, message: "Leads reasignados correctamente." });
+    res.json({ success: true, message: "Leads reassigned successfully." });
   } catch (err) {
     console.error("Error reassigning leads:", err);
-    res.status(500).json({ error: "Error al reasignar los leads." });
+    res.status(500).json({ error: "Error reassigning leads." });
   }
 });
 
@@ -842,15 +839,16 @@ app.post("/admin/leads/deduplicate/preview", authAdmin, async (req, res) => {
         $group: {
           _id: "$Phone",
           count: { $sum: 1 },
-          ids: { $push: "$_id" },
-          docs: { $push: "$$ROOT" } // Push entire doc to sort
+          // Optimize: Only push fields needed for preview to avoid hitting BSON limit
+          docs: { $push: { _id: "$_id", Name: "$Name", Timestamp: "$Timestamp", Phone: "$Phone" } }
         }
       },
       {
         $match: {
           count: { $gt: 1 }
         }
-      }
+      },
+      { $limit: 100 } // Safety limit for preview
     ], { allowDiskUse: true }).toArray();
 
     if (duplicates.length === 0) {
@@ -890,7 +888,7 @@ app.post("/admin/leads/deduplicate/preview", authAdmin, async (req, res) => {
 
   } catch (err) {
     console.error("Error previewing duplicates:", err);
-    res.status(500).json({ error: "Error al previsualizar duplicados" });
+    res.status(500).json({ error: "Error previewing duplicates" });
   }
 });
 
@@ -916,8 +914,8 @@ app.post("/admin/leads/deduplicate", authAdmin, async (req, res) => {
         $group: {
           _id: "$Phone",
           count: { $sum: 1 },
-          ids: { $push: "$_id" },
-          docs: { $push: "$$ROOT" } // Push entire doc to sort
+          // Optimize: Only push what is needed for sorting and deletion
+          docs: { $push: { _id: "$_id", Timestamp: "$Timestamp" } }
         }
       },
       {

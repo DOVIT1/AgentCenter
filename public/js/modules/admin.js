@@ -5,7 +5,7 @@ import { logout, createUser } from './auth.js';
 
 // let allLeadsTable = null; // Removed DataTable
 let currentPage = 1;
-const itemsPerPage = 50;
+let itemsPerPage = 50;
 let unassignedLeadsTable = null;
 let agentChart = null;
 let adminLeadsData = [];
@@ -429,6 +429,98 @@ export async function loadFilterOptions() {
         agentFilterSelect.insertAdjacentHTML('beforeend', '<option value="unassigned">Unassigned</option>');
         reassignAgentSelect.innerHTML = `<option value="unassigned">Unassign (Back to Pool)</option>`;
 
+        // Ensure Rows Per Page has a default listener if not already set
+        const rowsPerPageSelect = document.getElementById('lead-rows-per-page');
+        if (rowsPerPageSelect) {
+            let previousValue = rowsPerPageSelect.value;
+            rowsPerPageSelect.addEventListener('focus', () => { previousValue = rowsPerPageSelect.value; });
+
+            rowsPerPageSelect.onchange = () => {
+                const val = rowsPerPageSelect.value;
+                if (val === 'custom') {
+                    // Show Custom Rows Modal
+                    const modal = document.getElementById('customRowsModal');
+                    const input = document.getElementById('customRowsInput');
+                    const confirmBtn = document.getElementById('btnConfirmCustomRows');
+                    const cancelBtn = document.getElementById('btnCloseCustomRowsModal');
+
+                    if (!modal) {
+                        // Fallback just in case
+                        console.error("Custom Rows Modal not found");
+                        rowsPerPageSelect.value = previousValue;
+                        return;
+                    }
+
+                    modal.style.display = 'flex';
+                    input.value = '';
+                    input.focus();
+
+                    if (window.feather) feather.replace();
+
+                    const cleanup = () => {
+                        modal.style.display = 'none';
+                        confirmBtn.removeEventListener('click', onConfirm);
+                        cancelBtn.removeEventListener('click', onCancel);
+                        // If no value was confirmed, revert to previous
+                        if (rowsPerPageSelect.value === 'custom') {
+                            rowsPerPageSelect.value = previousValue;
+                        }
+                    };
+
+                    const onConfirm = () => {
+                        const numStr = input.value;
+                        if (!numStr) {
+                            showToast("Please enter a number.", 'error');
+                            return;
+                        }
+                        const num = parseInt(numStr);
+                        if (isNaN(num) || num <= 0 || num > 5000) {
+                            showToast("Please enter a valid number between 1 and 5000.", 'error');
+                            return;
+                        }
+
+                        // Check if option already exists
+                        let opt = Array.from(rowsPerPageSelect.options).find(o => o.value === String(num));
+                        if (!opt) {
+                            opt = document.createElement('option');
+                            opt.value = num;
+                            opt.textContent = num;
+                            // Insert before 'Custom'
+                            rowsPerPageSelect.insertBefore(opt, rowsPerPageSelect.querySelector('option[value="custom"]'));
+                        }
+                        rowsPerPageSelect.value = num;
+                        previousValue = num; // Update previous value
+
+                        // Clean up and load leads
+                        modal.style.display = 'none';
+                        confirmBtn.removeEventListener('click', onConfirm);
+                        cancelBtn.removeEventListener('click', onCancel);
+
+                        loadAllLeads(1);
+                    };
+
+                    const onCancel = () => {
+                        cleanup();
+                        // Revert is handled in cleanup if value is still custom, but cleaner to do explicitly
+                        rowsPerPageSelect.value = previousValue;
+                    };
+
+                    confirmBtn.addEventListener('click', onConfirm);
+                    cancelBtn.addEventListener('click', onCancel);
+
+                    // Enter key support
+                    input.onkeydown = (e) => {
+                        if (e.key === 'Enter') onConfirm();
+                        if (e.key === 'Escape') onCancel();
+                    };
+
+                } else {
+                    previousValue = val;
+                    loadAllLeads(1);
+                }
+            };
+        }
+
         if (agentUsers && agentUsers.length) {
             const agentOpts = agentUsers.map(user => `<option value="${user.id}">${user.username}</option>`).join('');
             agentFilterSelect.insertAdjacentHTML('beforeend', agentOpts);
@@ -489,6 +581,9 @@ export async function loadAllLeads(page = 1) {
     queryString.append('sortOrder', sortOrder);
 
     // Pagination params
+    queryString.append('page', currentPage);
+    // Pagination params
+    itemsPerPage = parseInt(document.getElementById('lead-rows-per-page').value) || 50;
     queryString.append('page', currentPage);
     queryString.append('limit', itemsPerPage);
 
