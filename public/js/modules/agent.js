@@ -1,7 +1,7 @@
 import { CONFIG } from './config.js';
 import { state } from './state.js';
 import { showToast, escapeHtml, phoneTelHref, showScreen } from './utils.js';
-import { logout } from './auth.js';
+import { logout, fetchWithAuth } from './auth.js';
 import { openLeadForm, copyFormToClipboard, addProductRow } from './form.js';
 
 let performanceChart = null;
@@ -80,9 +80,7 @@ export function initializeApp() {
 
 async function loadAgentData() {
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/agent/data`, {
-            headers: { 'Authorization': `Bearer ${state.userToken}` }
-        });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/agent/data`);
         if (!resp.ok) {
             showToast('Error loading agent data');
             return;
@@ -421,9 +419,9 @@ function saveDisposition() {
 
 async function updateStatsOnBackend() {
     try {
-        await fetch(`${CONFIG.API_BASE_URL}/agent/stats`, {
+        await fetchWithAuth(`${CONFIG.API_BASE_URL}/agent/stats`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.userToken}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ stats: state.sessionDispositions })
         });
     } catch (err) {
@@ -433,9 +431,9 @@ async function updateStatsOnBackend() {
 
 async function saveProgressOnBackend(currentIndex, updatedRow, originalIndex) {
     try {
-        await fetch(`${CONFIG.API_BASE_URL}/agent/progress`, {
+        await fetchWithAuth(`${CONFIG.API_BASE_URL}/agent/progress`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.userToken}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ currentIndex, updatedRow, originalIndex })
         });
     } catch (err) {
@@ -533,9 +531,7 @@ function loadCallbacks() {
 
 async function fetchCallbacks() {
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/agent/callbacks`, {
-            headers: { 'Authorization': `Bearer ${state.userToken}` }
-        });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/agent/callbacks`);
         if (!resp.ok) return;
         const callbacks = await resp.json();
         const list = document.getElementById('callbacksList');
@@ -564,7 +560,7 @@ async function fetchCallbacks() {
 
 async function exportCallbacks() {
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/agent/callbacks`, { headers: { 'Authorization': `Bearer ${state.userToken}` } });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/agent/callbacks`);
         if (!resp.ok) { showToast('Error exporting callbacks.'); return; }
         const callbacks = await resp.json();
         if (!callbacks.length) { showToast('No callbacks to export.'); return; }
@@ -583,9 +579,7 @@ async function exportCallbacks() {
 
 async function showHistory(leadId) {
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/agent/leads/${leadId}/history`, {
-            headers: { 'Authorization': `Bearer ${state.userToken}` }
-        });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/agent/leads/${leadId}/history`);
         if (!resp.ok) { showToast('Error fetching history'); return; }
         const history = await resp.json();
         const list = document.getElementById('leadHistoryList');

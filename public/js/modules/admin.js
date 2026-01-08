@@ -1,7 +1,7 @@
 import { CONFIG } from './config.js';
 import { state } from './state.js';
 import { showToast, showLoader, hideLoader, escapeHtml } from './utils.js';
-import { logout, createUser } from './auth.js';
+import { logout, createUser, fetchWithAuth } from './auth.js';
 
 // let allLeadsTable = null; // Removed DataTable
 let currentPage = 1;
@@ -231,7 +231,7 @@ export async function loadUsersSummary() {
 
 export async function getUsersSummary() {
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/users`, { headers: { 'Authorization': `Bearer ${state.userToken}` } });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/users`);
         if (!resp.ok) return [];
         return await resp.json();
     } catch (err) {
@@ -289,12 +289,9 @@ async function handleUpdateUser() {
     }
 
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/users/${userId}`, {
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/users/${userId}`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${state.userToken}`
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, role, username, password, rcExtensionId })
         });
 
@@ -316,10 +313,7 @@ export async function handleDeleteUser(userId) {
         return;
     }
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/users/${userId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${state.userToken}` }
-        });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/users/${userId}`, { method: 'DELETE' });
         const result = await resp.json();
         if (resp.ok && result.success) {
             showToast(result.message);
@@ -407,7 +401,7 @@ function initializeLeadManagement() {
 
 export async function loadFilterOptions() {
     try {
-        const respOptions = await fetch(`${CONFIG.API_BASE_URL}/admin/filters/options`, { headers: { 'Authorization': `Bearer ${state.userToken}` } });
+        const respOptions = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/filters/options`);
         const data = await respOptions.json();
         const users = await getUsersSummary();
         const agentUsers = users.filter(u => u.role === 'agent');
@@ -590,9 +584,7 @@ export async function loadAllLeads(page = 1) {
     showLoader('all-leads-container');
 
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/leads?${queryString.toString()}`, {
-            headers: { 'Authorization': `Bearer ${state.userToken}` }
-        });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/leads?${queryString.toString()}`);
         if (!resp.ok) {
             showToast('Error loading leads');
             return;
@@ -710,9 +702,9 @@ function renderPagination(totalItems, currentPage, totalPages) {
 export async function markAsSale(leadId) {
     if (!confirm('Are you sure you want to mark this lead as a Sale?')) return;
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/leads/${leadId}`, {
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/leads/${leadId}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.userToken}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ DISPOSITION: 'Sale' })
         });
         const result = await resp.json();
@@ -771,9 +763,9 @@ async function saveLeadChanges() {
     const Address = document.getElementById('editLeadAddress').value;
 
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/leads/${id}`, {
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/leads/${id}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.userToken}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ Name, Phone, Email, Product, DISPOSITION, 'Prev. Company': prevCompany, listName, Address })
         });
         const result = await resp.json();
@@ -799,9 +791,9 @@ export async function reassignSelectedLeads() {
     if (!confirm(`You are about to ${action} ${selectedLeads.length} leads. Are you sure?`)) return;
 
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/leads/reassign`, {
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/leads/reassign`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.userToken}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ leadIds: selectedLeads, newUserId })
         });
         const result = await resp.json();
@@ -838,9 +830,9 @@ export async function deleteSelectedLeads() {
     if (!confirm(`Are you sure you want to PERMANENTLY DELETE ${selectedLeads.length} leads?`)) return;
     try {
         const password = await requestPasswordConfirmation();
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/leads/bulk`, {
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/leads/bulk`, {
             method: 'DELETE',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.userToken}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ leadIds: selectedLeads, password })
         });
         const result = await resp.json();
@@ -853,7 +845,7 @@ export async function deleteSelectedLeads() {
 
 export async function handleDeduplicateLeads() {
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/leads/deduplicate/preview`, { method: 'POST', headers: { 'Authorization': `Bearer ${state.userToken}` } });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/leads/deduplicate/preview`, { method: 'POST' });
         const result = await resp.json();
         if (resp.ok) {
             if (result.count === 0) { showToast("No duplicate leads found.", "success"); return; }
@@ -873,9 +865,9 @@ export async function handleDeduplicateLeads() {
 async function confirmDeleteDuplicates() {
     try {
         const password = await requestPasswordConfirmation();
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/leads/deduplicate`, {
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/leads/deduplicate`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.userToken}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password })
         });
         const result = await resp.json();
@@ -889,7 +881,7 @@ async function confirmDeleteDuplicates() {
 
 async function loadUnassignedLeads() {
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/leads/unassigned`, { headers: { 'Authorization': `Bearer ${state.userToken}` } });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/leads/unassigned`);
         if (!resp.ok) return;
         const leads = await resp.json();
         // Implementation for loading into a different table (not used in current view but good to have)
@@ -913,9 +905,8 @@ async function uploadLeads() {
     formData.append('file', file);
 
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/upload`, {
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/upload`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${state.userToken}` },
             body: formData
         });
         const result = await resp.json();
@@ -929,7 +920,7 @@ async function uploadLeads() {
 
 async function loadAnalyticsDashboard() {
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/stats`, { headers: { 'Authorization': `Bearer ${state.userToken}` } });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/stats`);
         if (!resp.ok) return;
         const stats = await resp.json();
 
@@ -985,7 +976,7 @@ async function loadAgentPerformanceChart() {
 
 async function loadRingCentralMetrics(timeRange = 'today') {
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/ringcentral/stats?timeRange=${timeRange}`, { headers: { 'Authorization': `Bearer ${state.userToken}` } });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/ringcentral/stats?timeRange=${timeRange}`);
         if (!resp.ok) return;
         const data = await resp.json();
         localStorage.setItem('rcMetricsData', JSON.stringify(data));
@@ -1032,7 +1023,7 @@ async function getAgentStats() {
     const endDate = document.getElementById('statsEndDate').value;
     if (!startDate || !endDate) { showToast('Please select both dates.'); return; }
     try {
-        const resp = await fetch(`${CONFIG.API_BASE_URL}/admin/users/${userId}/stats?startDate=${startDate}&endDate=${endDate}`, { headers: { 'Authorization': `Bearer ${state.userToken}` } });
+        const resp = await fetchWithAuth(`${CONFIG.API_BASE_URL}/admin/users/${userId}/stats?startDate=${startDate}&endDate=${endDate}`);
         if (!resp.ok) { showToast('Error fetching stats'); return; }
         const stats = await resp.json();
         document.getElementById('statsTotalCalls').textContent = stats.totalCalls;

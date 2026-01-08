@@ -10,6 +10,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     setupSocketListeners();
 
+    // Check for logout reason
+    const logoutReason = localStorage.getItem('logoutReason');
+    if (logoutReason) {
+        alert(logoutReason);
+        localStorage.removeItem('logoutReason');
+    }
+
     const themeBtn = document.getElementById('themeToggleBtn');
     if (themeBtn) themeBtn.addEventListener('click', toggleDarkMode);
 

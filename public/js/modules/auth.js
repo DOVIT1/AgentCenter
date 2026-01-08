@@ -27,12 +27,42 @@ export async function login(username, password) {
     }
 }
 
-export function logout() {
+export function logout(reason = null) {
     state.reset();
     localStorage.removeItem('userToken');
     localStorage.removeItem('currentUser');
+
+    if (reason) {
+        localStorage.setItem('logoutReason', reason);
+    }
+
     // Reload to clear all listeners and state cleanly
     window.location.reload();
+}
+
+export async function fetchWithAuth(url, options = {}) {
+    // Ensure headers object exists
+    options.headers = options.headers || {};
+
+    // Add Authorization header if token exists
+    if (state.userToken) {
+        options.headers['Authorization'] = `Bearer ${state.userToken}`;
+    }
+
+    try {
+        const response = await fetch(url, options);
+
+        if (response.status === 401) {
+            // Session expired or unauthorized
+            console.warn('Unauthorized (401) detected. Logging out.');
+            logout('Session expired. Please login again.');
+            throw new Error('Session expired'); // Stop further execution
+        }
+
+        return response;
+    } catch (error) {
+        throw error;
+    }
 }
 
 export async function createUser(userData) {
