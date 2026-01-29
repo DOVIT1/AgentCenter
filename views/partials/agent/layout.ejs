@@ -57,7 +57,21 @@
 
     <div id="rightPanel">
         <div class="filter-section">
-            <h3 class="panel-subtitle"><i data-feather="filter"></i> Disposition Filter</h3>
+            <h3 class="panel-subtitle"><i data-feather="filter"></i> Filters</h3>
+            <div class="filter-options-container" style="margin-bottom: 15px;">
+                <div style="margin-bottom: 10px;">
+                    <label style="font-size: 0.9em; font-weight: 600; color: var(--text);">Campaign / List</label>
+                    <select id="filterList" class="form-input" style="padding: 6px;">
+                        <option value="">All Lists</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="font-size: 0.9em; font-weight: 600; color: var(--text);">Custom ID</label>
+                    <select id="filterCustomId" class="form-input" style="padding: 6px;">
+                        <option value="">All Custom IDs</option>
+                    </select>
+                </div>
+            </div>
             <div class="filter-options" id="filterOptions">
                 <p style="text-align:center; color:var(--subtext);">No dispositions</p>
             </div>

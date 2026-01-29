@@ -93,13 +93,58 @@ async function loadAgentData() {
         state.filteredData = [];
         state.selectedDispositions = [];
         state.availableDispositions = [];
-        extractDispositionsFromData();
+        state.availableLists = [];
+        state.availableCustomIds = [];
+        extractFilterData();
+        loadSavedFilters();
         updateFilterStats();
         showRow(state.currentIndex);
         updateCounters();
         updateCurrentPosition();
     } catch (err) {
         showToast('Connection error while loading data');
+    }
+}
+
+function loadSavedFilters() {
+    try {
+        const userData = JSON.parse(localStorage.getItem(`userData_${state.currentUser.id}`) || '{}');
+        const filters = userData.filters;
+        if (!filters) return;
+
+        let hasActiveFilter = false;
+
+        // Restore Dispositions
+        if (filters.dispositions && Array.isArray(filters.dispositions)) {
+            filters.dispositions.forEach(d => {
+                const cb = document.getElementById(`filter-${d}`);
+                if (cb) {
+                    cb.checked = true;
+                    hasActiveFilter = true;
+                }
+            });
+        }
+
+        // Restore List
+        const listSelect = document.getElementById('filterList');
+        if (filters.list && listSelect) {
+            listSelect.value = filters.list;
+            // Verify if value was actually set (it might not exist in options anymore)
+            if (listSelect.value) hasActiveFilter = true;
+        }
+
+        // Restore Custom ID
+        const customSelect = document.getElementById('filterCustomId');
+        if (filters.customId && customSelect) {
+            customSelect.value = filters.customId;
+            if (customSelect.value) hasActiveFilter = true;
+        }
+
+        if (hasActiveFilter) {
+            applyFilter();
+        }
+    } catch (e) {
+        console.error("Error loading saved filters", e);
     }
 }
 
@@ -111,15 +156,54 @@ function loadUserData() {
     updateCounters();
 }
 
-function extractDispositionsFromData() {
-    const set = new Set();
-    state.data.forEach((row) => { const d = (row['DISPOSITION'] || '').toString().trim(); if (d) set.add(d); });
-    state.availableDispositions = Array.from(set).sort();
+function extractFilterData() {
+    const dispositionSet = new Set();
+    const listSet = new Set();
+    const customIdSet = new Set();
+
+    state.data.forEach((row) => {
+        // Dispositions
+        const d = (row['DISPOSITION'] || '').toString().trim();
+        if (d) dispositionSet.add(d);
+
+        // List Name
+        const l = (row['listName'] || '').toString().trim();
+        if (l) listSet.add(l);
+
+        // Custom ID
+        const c = (row['customId'] || '').toString().trim();
+        if (c) customIdSet.add(c);
+    });
+
+    state.availableDispositions = Array.from(dispositionSet).sort();
+    state.availableLists = Array.from(listSet).sort();
+    state.availableCustomIds = Array.from(customIdSet).sort();
+
     updateFilterOptions();
 }
 
 function updateFilterOptions() {
     const el = document.getElementById('filterOptions');
+    const listSelect = document.getElementById('filterList');
+    const customIdSelect = document.getElementById('filterCustomId');
+
+    // Populate List Dropdown
+    if (listSelect) {
+        const currentList = listSelect.value;
+        listSelect.innerHTML = '<option value="">All Lists</option>' +
+            state.availableLists.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+        listSelect.value = currentList; // Restore selection if valid
+    }
+
+    // Populate Custom ID Dropdown
+    if (customIdSelect) {
+        const currentId = customIdSelect.value;
+        customIdSelect.innerHTML = '<option value="">All Custom IDs</option>' +
+            state.availableCustomIds.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+        customIdSelect.value = currentId; // Restore selection
+    }
+
+    // Populate Dispositions
     if (!state.availableDispositions.length) {
         el.innerHTML = '<p style="text-align:center;color:var(--subtext);">No dispositions in data</p>';
         return;
@@ -143,7 +227,7 @@ function toggleFilterPanel() {
     } else {
         right.style.display = 'flex';
         document.getElementById('toggleFilterBtn').textContent = '🔍 Hide Filters';
-        if (state.data.length) extractDispositionsFromData();
+        if (state.data.length) extractFilterData();
         callbacksList.style.display = 'none';
         filterSection.style.display = 'block';
         filteredContacts.style.display = 'block';
@@ -154,10 +238,18 @@ function selectAllDispositions() { document.querySelectorAll('#filterOptions inp
 
 function clearFilter() {
     document.querySelectorAll('#filterOptions input[type="checkbox"]').forEach(cb => cb.checked = false);
+    document.getElementById('filterList').value = "";
+    document.getElementById('filterCustomId').value = "";
     state.selectedDispositions = [];
     state.isFilterActive = false;
     state.filteredData = [];
     state.currentIndex = 0;
+
+    // Clear from storage
+    const userData = JSON.parse(localStorage.getItem(`userData_${state.currentUser.id}`) || '{}');
+    delete userData.filters;
+    localStorage.setItem(`userData_${state.currentUser.id}`, JSON.stringify(userData));
+
     updateFilterStats();
     showRow(state.currentIndex);
     updateCurrentPosition();
@@ -171,11 +263,36 @@ function hideFilterPanel() {
 function applyFilter() {
     const checked = Array.from(document.querySelectorAll('#filterOptions input[type="checkbox"]:checked')).map(cb => cb.value);
     state.selectedDispositions = checked;
-    if (!state.selectedDispositions.length) {
-        showToast('Please select at least one disposition to filter');
+
+    const selectedList = document.getElementById('filterList').value;
+    const selectedCustomId = document.getElementById('filterCustomId').value;
+
+    if (!state.selectedDispositions.length && !selectedList && !selectedCustomId) {
+        showToast('Please select at least one filter criterion');
         return;
     }
-    state.filteredData = state.data.filter(obj => state.selectedDispositions.includes((obj['DISPOSITION'] || '').toString()));
+
+    state.filteredData = state.data.filter(row => {
+        const d = (row['DISPOSITION'] || '').toString();
+        const l = (row['listName'] || '').toString();
+        const c = (row['customId'] || '').toString();
+
+        const matchDisposition = state.selectedDispositions.length === 0 || state.selectedDispositions.includes(d);
+        const matchList = !selectedList || l === selectedList;
+        const matchCustomId = !selectedCustomId || c === selectedCustomId;
+
+        return matchDisposition && matchList && matchCustomId;
+    });
+
+    // Save to storage
+    const userData = JSON.parse(localStorage.getItem(`userData_${state.currentUser.id}`) || '{}');
+    userData.filters = {
+        dispositions: state.selectedDispositions,
+        list: selectedList,
+        customId: selectedCustomId
+    };
+    localStorage.setItem(`userData_${state.currentUser.id}`, JSON.stringify(userData));
+
     state.isFilterActive = true;
     state.currentIndex = 0;
     updateFilterStats();
@@ -188,7 +305,16 @@ function updateFilterStats() {
     const stats = document.getElementById('filterStats');
     const currentData = state.isFilterActive ? state.filteredData.map(f => f.row) : state.data;
     stats.textContent = `Showing: ${currentData.length} of ${state.data.length} contacts`;
-    if (state.isFilterActive) stats.innerHTML += `<br><small>Filter active: ${state.selectedDispositions.join(', ')}</small>`;
+    if (state.isFilterActive) {
+        const listVal = document.getElementById('filterList').value;
+        const customIdVal = document.getElementById('filterCustomId').value;
+        let info = [];
+        if (state.selectedDispositions.length) info.push(`Disp: ${state.selectedDispositions.join(', ')}`);
+        if (listVal) info.push(`List: ${listVal}`);
+        if (customIdVal) info.push(`ID: ${customIdVal}`);
+
+        stats.innerHTML += `<br><small>Filter: ${info.join(' | ')}</small>`;
+    }
 }
 
 function updateFilteredContactsList() {
@@ -407,9 +533,8 @@ function saveDisposition() {
     saveProgressOnBackend(state.currentIndex, updatedRow, originalIndex);
 
     if (disposition && !state.availableDispositions.includes(disposition)) {
-        state.availableDispositions.push(disposition);
-        state.availableDispositions.sort();
-        updateFilterOptions();
+        // If a new disposition appears, refresh all filters to ensure consistency
+        extractFilterData();
     }
 
     if (state.isFilterActive) updateFilteredContactsList();
@@ -523,8 +648,7 @@ function updateCounters() {
 }
 
 function loadCallbacks() {
-    // Same as before but reading from state or fetching if needed
-    // ... Actually the implementation calls fetch every time.
+
     // I will just implement the fetch here.
     fetchCallbacks();
 }
@@ -616,7 +740,14 @@ function exportSummaryTXT() {
         Object.keys(state.sessionDispositions).forEach(d => { if (!nonContacts.includes(d)) totalContacts += state.sessionDispositions[d]; });
         text += `\nContacts: ${totalContacts}`;
         if (state.isFilterActive) {
-            text += `\n\n--- FILTER APPLIED ---\nSelected dispositions: ${state.selectedDispositions.join(', ')}\nContacts shown: ${state.filteredData.length} of ${state.data.length}`;
+            const listVal = document.getElementById('filterList').value;
+            const customIdVal = document.getElementById('filterCustomId').value;
+            let filterInfo = [];
+            if (state.selectedDispositions.length) filterInfo.push(`Dispositions: ${state.selectedDispositions.join(', ')}`);
+            if (listVal) filterInfo.push(`List: ${listVal}`);
+            if (customIdVal) filterInfo.push(`Custom ID: ${customIdVal}`);
+
+            text += `\n\n--- FILTER APPLIED ---\n${filterInfo.join('\n')}\nContacts shown: ${state.filteredData.length} of ${state.data.length}`;
         }
     }
     const contentEl = document.getElementById('exportSummaryContent');
